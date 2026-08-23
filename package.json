@@ -1,0 +1,8 @@
+{
+  "name": "sohbet-api",
+  "version": "1.0.0",
+  "description": "Sohbet API - PHP + MySQL",
+  "scripts": {
+    "start": "php -S 0.0.0.0:$PORT"
+  }
+}
