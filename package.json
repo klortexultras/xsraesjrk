@@ -1,8 +1,7 @@
 {
   "name": "sohbet-api",
   "version": "1.0.0",
-  "description": "Sohbet API - PHP + MySQL",
   "scripts": {
-    "start": "php -S 0.0.0.0:$PORT"
+    "start": "php -S 0.0.0.0:8080 -t ."
   }
 }
