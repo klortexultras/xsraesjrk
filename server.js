@@ -455,17 +455,24 @@ app.get("/api/admin/users", authenticate, requireAdmin, async (req, res) => {
 });
 
 // ======================================================
-// ADMIN - BAN
+// ADMIN - BAN (with reason)
 // ======================================================
 
 app.post("/api/admin/ban", authenticate, requireAdmin, async (req, res) => {
     try {
-        const { username } = req.body;
+        const { username, reason } = req.body;
 
         if (!username) {
             return res.status(400).json({
                 success: false,
                 message: "Kullanıcı adı gerekli."
+            });
+        }
+
+        if (!reason || reason.trim().length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Ban sebebi gerekli."
             });
         }
 
@@ -487,10 +494,19 @@ app.post("/api/admin/ban", authenticate, requireAdmin, async (req, res) => {
             });
         }
 
+        const bannedUser = result.rows[0];
+
+        // Socket'ini bul ve event gönder
+        const targetSocket = getUserSocket(bannedUser.id);
+        if (targetSocket) {
+            targetSocket.emit("accountBanned", { reason: reason.trim() });
+            targetSocket.disconnect(true);
+        }
+
         res.json({
             success: true,
             message: "Kullanıcı banlandı.",
-            user: result.rows[0]
+            user: bannedUser
         });
 
     } catch (error) {
@@ -549,17 +565,24 @@ app.post("/api/admin/unban", authenticate, requireAdmin, async (req, res) => {
 });
 
 // ======================================================
-// ADMIN - MUTE
+// ADMIN - MUTE (with reason)
 // ======================================================
 
 app.post("/api/admin/mute", authenticate, requireAdmin, async (req, res) => {
     try {
-        const { username } = req.body;
+        const { username, reason } = req.body;
 
         if (!username) {
             return res.status(400).json({
                 success: false,
                 message: "Kullanıcı adı gerekli."
+            });
+        }
+
+        if (!reason || reason.trim().length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Mute sebebi gerekli."
             });
         }
 
@@ -579,6 +602,14 @@ app.post("/api/admin/mute", authenticate, requireAdmin, async (req, res) => {
                 success: false,
                 message: "Kullanıcı bulunamadı veya admin hesabı."
             });
+        }
+
+        const mutedUser = result.rows[0];
+
+        // Socket'ini bul ve event gönder
+        const targetSocket = getUserSocket(mutedUser.id);
+        if (targetSocket) {
+            targetSocket.emit("accountMuted", { reason: reason.trim() });
         }
 
         res.json({
@@ -642,8 +673,10 @@ app.post("/api/admin/unmute", authenticate, requireAdmin, async (req, res) => {
 });
 
 // ======================================================
-// SOCKET.IO AUTH
+// SOCKET.IO AUTH & ONLINE USERS
 // ======================================================
+
+const onlineUsers = new Map(); // userId -> socket
 
 io.use(async (socket, next) => {
     try {
@@ -683,12 +716,20 @@ io.use(async (socket, next) => {
     }
 });
 
+// Helper to get socket by userId
+function getUserSocket(userId) {
+    return onlineUsers.get(userId) || null;
+}
+
 // ======================================================
 // SOCKET.IO CHAT
 // ======================================================
 
 io.on("connection", (socket) => {
     console.log("Client connected:", socket.user.username, socket.id);
+
+    // Store socket
+    onlineUsers.set(socket.user.id, socket);
 
     socket.emit("loginSuccess", {
         id: socket.user.id,
@@ -732,13 +773,13 @@ io.on("connection", (socket) => {
             const user = result.rows[0];
 
             if (user.is_banned) {
-                socket.emit("accountBanned");
+                socket.emit("accountBanned", { reason: "Hesabınız yasaklanmış." });
                 socket.disconnect(true);
                 return;
             }
 
             if (user.is_muted) {
-                socket.emit("accountMuted");
+                socket.emit("accountMuted", { reason: "Susturuldunuz." });
                 return;
             }
 
@@ -756,6 +797,7 @@ io.on("connection", (socket) => {
 
     socket.on("disconnect", () => {
         console.log("Client disconnected:", socket.user?.username, socket.id);
+        onlineUsers.delete(socket.user.id);
     });
 });
 
